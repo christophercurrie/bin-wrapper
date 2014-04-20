@@ -41,7 +41,6 @@ function BinWrapper(opts) {
     this.dest = opts.dest || process.cwd();
     this.global = opts.global !== false;
     this.paths = [this.dest];
-    this.path = this._find(this.bin) || path.join(this.dest, this.bin);
 }
 
 /**
@@ -70,6 +69,8 @@ BinWrapper.prototype.check = function (cmd) {
         return this._test(global, cmd);
     }
 
+    // Not using a global, so we can set the path now.
+    this.path = path.join(this.dest, this.bin);
     var dl = Object.getOwnPropertyNames(file).length !== 0 ? [].concat(url, file) : url;
 
     this._download(dl, this.dest, {
@@ -248,17 +249,28 @@ BinWrapper.prototype._test = function (bin, cmd) {
         if (self.opts.version && works) {
             binCheck(bin, '--version', function (err, works, msg) {
                 if (msg) {
-                    self.emit(msg.indexOf(self.opts.version) !== -1 ? 'success' : 'fail');
+                    msg.indexOf(self.opts.version) !== -1 ? self._success(bin) : self.emit('fail');
                 } else {
-                    self.emit('success');
+                    self._success(bin);
                 }
             });
         } else {
-            self.emit(works ? 'success' : 'fail');
+            works ? self._success(bin) : self.emit('fail');
         }
     });
 
     return this;
+};
+
+/**
+ * Report success for a specific binary.
+ *
+ * @param {String} bin
+ * @api private
+ */
+BinWrapper.prototype._success = function (bin) {
+    this.path = bin;
+    this.emit('success');
 };
 
 /**

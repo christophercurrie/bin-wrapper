@@ -29,18 +29,18 @@ describe('BinWrapper()', function () {
         cb(assert.equal(this.bin.src, dest));
     });
 
-    it('should return destination path', function (cb) {
-        var dest = path.join(this.bin.dest, this.bin.bin);
-        cb(assert.equal(this.bin.path, dest));
+    it('should not return destination path before validation', function (cb) {
+        cb(assert.equal(this.bin.path, undefined));
     });
 
     it('should download and test a binary and emit working', function (cb) {
+        var self = this;
         this.bin
             .addUrl('https://raw.github.com/yeoman/node-gifsicle/0.1.4/vendor/linux/x64/gifsicle', 'linux', 'x64')
             .addUrl('https://raw.github.com/yeoman/node-gifsicle/0.1.4/vendor/osx/gifsicle', 'darwin')
             .check()
             .on('success', function () {
-                cb(assert(true));
+                cb(assert(self.bin.path));
             });
     });
 
@@ -80,6 +80,26 @@ describe('BinWrapper()', function () {
             .build(script)
             .on('finish', function () {
                 cb(assert(true));
+            });
+    });
+
+    it('should not use the path of an existing binary of the wrong version', function(cb) {
+        var self = this;
+        self.bin
+            .addUrl('https://raw.github.com/yeoman/node-gifsicle/0.1.4/vendor/linux/x64/gifsicle', 'linux', 'x64')
+            .addUrl('https://raw.github.com/yeoman/node-gifsicle/0.1.4/vendor/osx/gifsicle', 'darwin')
+            .check()
+            .on('success', function () {
+                var bin2;
+
+                // put the successful download on the path
+                process.env['PATH'] = path.dirname(self.bin.path) + ":" + process.env["PATH"];
+                bin2 = new Bin({ bin: 'gifsicle', version: '2.0', dest: 'tmp2' });
+                bin2
+                    .check()
+                    .on('fail', function(){
+                        cb(assert(true));
+                    });
             });
     });
 });
