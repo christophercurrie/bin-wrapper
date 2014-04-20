@@ -57,32 +57,70 @@ util.inherits(BinWrapper, events.EventEmitter);
  */
 
 BinWrapper.prototype.check = function (cmd) {
-    var file = this._parse(this.files);
     var global = this._find(this.bin);
     var self = this;
-    var url = this._parse(this.urls);
 
     cmd = cmd || ['--help'];
     cmd = Array.isArray(cmd) ? cmd : [cmd];
 
     if (global) {
-        return this._test(global, cmd);
+        return this._test(global, cmd, function(err, works) {
+            // explicitly not propagating this err, as it's not a hard error,
+            // just the installed binary couldn't be used.
+            if (works) {
+                self.path = global;
+                self.emit('success');
+            }
+            else {
+                // Try downloading a binary as a fallback
+                self._checkDownload(cmd);
+            }
+        });
     }
 
-    // Not using a global, so we can set the path now.
-    this.path = path.join(this.dest, this.bin);
+    // No global, so go ahead and download a binary.
+    return self._checkDownload(cmd);
+};
+
+/**
+ * Download and test a binary.
+ */
+BinWrapper.prototype._checkDownload = function(cmd) {
+    var self = this;
+    var file = this._parse(this.files);
+    var url = this._parse(this.urls);
     var dl = Object.getOwnPropertyNames(file).length !== 0 ? [].concat(url, file) : url;
+    var bin = path.join(self.dest, self.bin);
+
+    // No globals, so set the path
+    this.path = path.join(this.dest, this.bin);
+
+    // Don't bomb if no download urls were set.
+    // Allows checking for global, and fallback only to source.
+    if (!Array.isArray(dl) && !dl.url) {
+        self.emit('fail');
+        return this;
+    }
 
     this._download(dl, this.dest, {
         mode: '0755'
     }).once('data', function () {
         self.emit('download');
     }).on('close', function () {
-        return self._test(path.join(self.dest, self.bin), cmd);
+        return self._test(bin, cmd, function(err, works) {
+            if (err) { return self.emit('error', err); }
+            if (works) {
+                self.path = bin;
+                self.emit('success');
+            } else {
+                self.emit('fail');
+            }
+        });
     });
 
     return this;
 };
+
 
 /**
  * Download source and build a binary
@@ -235,42 +273,25 @@ BinWrapper.prototype._find = function (bin) {
  *
  * @param {String} bin
  * @param {Array} cmd
+ * @param {Function} callback
  * @api private
  */
-
-BinWrapper.prototype._test = function (bin, cmd) {
+BinWrapper.prototype._test = function (bin, cmd, callback) {
     var self = this;
 
     binCheck(bin, cmd, function (err, works) {
-        if (err) {
-            self.emit('error', err);
-        }
-
+        if (err) { return callback(err, false); }
         if (self.opts.version && works) {
-            binCheck(bin, '--version', function (err, works, msg) {
-                if (msg) {
-                    msg.indexOf(self.opts.version) !== -1 ? self._success(bin) : self.emit('fail');
-                } else {
-                    self._success(bin);
-                }
-            });
+            binCheck(bin, '--version', function(err, works, msg) {
+                if (err) { return callback(err, false); }
+                return callback(null, !msg || msg.indexOf(self.opts.version) !== -1);
+            })
         } else {
-            works ? self._success(bin) : self.emit('fail');
+            return callback(null, works);
         }
     });
 
     return this;
-};
-
-/**
- * Report success for a specific binary.
- *
- * @param {String} bin
- * @api private
- */
-BinWrapper.prototype._success = function (bin) {
-    this.path = bin;
-    this.emit('success');
 };
 
 /**

@@ -92,12 +92,16 @@ describe('BinWrapper()', function () {
             .on('success', function () {
                 var bin2;
 
-                // put the successful download on the path
-                process.env['PATH'] = path.dirname(self.bin.path) + ":" + process.env["PATH"];
-                bin2 = new Bin({ bin: 'gifsicle', version: '2.0', dest: 'tmp2' });
+                bin2 = new Bin({ bin: 'gifsicle', version: '2.0', dest: 'tmp/version' });
                 bin2
+                    .addPath(path.dirname(self.bin.path))
+                    .addUrl('https://raw.github.com/yeoman/node-gifsicle/0.1.4/vendor/linux/x64/gifsicle', 'linux', 'x64')
+                    .addUrl('https://raw.github.com/yeoman/node-gifsicle/0.1.4/vendor/osx/gifsicle', 'darwin')
                     .check()
-                    .on('fail', function(){
+                    .on('error', function(err){
+                        cb(assert.fail(err));
+                    })
+                    .on('download', function (){
                         cb(assert(true));
                     });
             });
